@@ -10,11 +10,40 @@ permissions:
   contents: write
 
 jobs:
+  find-dockerfiles:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Find Dockerfiles and generate matrix
+        id: set-matrix
+        run: |
+          dockerfiles=$(find . -name "Dockerfile" -type f | grep -v node_modules | sed 's|^\./||')
+          matrix_json="["
+          first=true
+          for dockerfile in $dockerfiles; do
+            dir=$(dirname "$dockerfile")
+            # Convert directory path to image name (replace / with -)
+            image_name=$(echo "$dir" | tr '/' '-')
+            if [ "$first" = true ]; then
+              first=false
+            else
+              matrix_json+=","
+            fi
+            matrix_json+="{\"dockerfile\":\"$dockerfile\",\"context\":\"$dir\",\"image\":\"$image_name\"}"
+          done
+          matrix_json+="]"
+          echo "matrix=$matrix_json" >> $GITHUB_OUTPUT
+          echo "Found Dockerfiles matrix: $matrix_json"
+
   build:
+    needs: find-dockerfiles
     strategy:
       matrix:
         os: [ubuntu-latest, ubuntu-24.04-arm]
-        images: ["ghcr.io/${{ github.repository_owner }}/golang-1.25.3-trixie"]
+        dockerfile: ${{ fromJson(needs.find-dockerfiles.outputs.matrix) }}
     timeout-minutes: 30
     runs-on: ${{ matrix.os }}
     steps:
@@ -42,15 +71,15 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
-          context: .
-          file: Dockerfile
+          context: ${{ matrix.dockerfile.context }}
+          file: ${{ matrix.dockerfile.dockerfile }}
           push: true
           platforms: ${{ steps.platform.outputs.platform }}
           tags: |
-            ${{ matrix.images }}:latest
-            ${{ matrix.images }}:${{ github.ref_name }}
-          cache-from: type=gha,tag=${{ matrix.images }}
-          cache-to: type=gha,mode=max,tag=${{ matrix.images }}
+            ghcr.io/${{ github.repository_owner }}/${{ matrix.dockerfile.image }}:latest
+            ghcr.io/${{ github.repository_owner }}/${{ matrix.dockerfile.image }}:${{ github.ref_name }}
+          cache-from: type=gha,tag=ghcr.io/${{ github.repository_owner }}/${{ matrix.dockerfile.image }}
+          cache-to: type=gha,mode=max,tag=ghcr.io/${{ github.repository_owner }}/${{ matrix.dockerfile.image }}
 
   release:
     needs: build
