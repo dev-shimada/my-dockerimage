@@ -64,8 +64,10 @@ jobs:
         run: |
           if [[ "${{ matrix.os }}" == *"-arm"* ]]; then
             echo "platform=linux/arm64" >> $GITHUB_OUTPUT
+            echo "platform_tag=linux-arm64" >> $GITHUB_OUTPUT
           else
             echo "platform=linux/amd64" >> $GITHUB_OUTPUT
+            echo "platform_tag=linux-amd64" >> $GITHUB_OUTPUT
           fi
 
       - name: Build and push
@@ -76,7 +78,27 @@ jobs:
           push: true
           platforms: ${{ steps.platform.outputs.platform }}
           tags: |
-            ghcr.io/${{ github.repository_owner }}/${{ matrix.dockerfile.image }}:latest
-            ghcr.io/${{ github.repository_owner }}/${{ matrix.dockerfile.image }}:${{ github.ref_name }}
+            ghcr.io/${{ github.repository_owner }}/${{ matrix.dockerfile.image }}:${{ github.ref_name }}-${{ steps.platform.outputs.platform_tag }}
           cache-from: type=gha,tag=ghcr.io/${{ github.repository_owner }}/${{ matrix.dockerfile.image }}
-          cache-to: type=gha,mode=max,tag=ghcr.io/${{ github.repository_owner }}/${{ matrix.dockerfile.image }}/${{ matrix.os }}
+          cache-to: type=gha,mode=max,tag=ghcr.io/${{ github.repository_owner }}/${{ matrix.dockerfile.image }}/${{ steps.platform.outputs.platform_tag }}
+  
+  create-manifest:
+    needs: [find-dockerfiles, build]
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        dockerfile: ${{ fromJson(needs.find-dockerfiles.outputs.matrix) }}
+    steps:
+      - name: Login
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create and push manifest
+        run: |
+          docker buildx imagetools create -t ghcr.io/${{ github.repository_owner }}/${{ matrix.dockerfile.image }}:${{ github.ref_name }} \
+            -t ghcr.io/${{ github.repository_owner }}/${{ matrix.dockerfile.image }}:latest \
+            ghcr.io/${{ github.repository_owner }}/${{ matrix.dockerfile.image }}:${{ github.ref_name }}-linux-amd64 \
+            ghcr.io/${{ github.repository_owner }}/${{ matrix.dockerfile.image }}:${{ github.ref_name }}-linux-arm64
