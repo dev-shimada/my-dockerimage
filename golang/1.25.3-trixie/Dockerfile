@@ -9,7 +9,7 @@ ENV LESSCHARSET utf-8
 WORKDIR /workspace
 
 RUN  <<EOF
-apt-get update && apt-get install -y vim git unzip less bash-completion npm procps
+apt-get update && apt-get install -y vim git git-secrets unzip less bash-completion npm procps
 echo "source /usr/share/bash-completion/completions/git" >> ~/.bashrc
 echo export PATH="$PATH:$(go env GOPATH)/bin" >> ~/.bashrc
 go install -v golang.org/x/tools/gopls@latest
