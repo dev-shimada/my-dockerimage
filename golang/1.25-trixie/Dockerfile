@@ -1,4 +1,4 @@
-FROM --platform=$BUILDPLATFORM golang:1.25.3-trixie AS vscode
+FROM --platform=$BUILDPLATFORM golang:1.25-trixie AS vscode
 
 ARG TARGETPLATFORM
 ARG BUILDPLATFORM
